@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/nestjs-typeorm-history-log.svg)](https://www.npmjs.com/package/nestjs-typeorm-history-log)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Automated audit trail for NestJS + TypeORM. Logs who changed what and when—including `QueryBuilder` and bulk updates that normal TypeORM subscribers miss. Works out of the box; you can customize it when you need to.
+**Automatic audit trail for NestJS and TypeORM.** Records who changed what, when, and what it was before—including `QueryBuilder` and bulk updates that default TypeORM subscribers miss. Zero config to start; extend with custom entities and options when you need to.
 
 ---
 
@@ -30,12 +30,12 @@ Automated audit trail for NestJS + TypeORM. Logs who changed what and when—inc
 
 ## Prerequisites
 
-- **Node.js** 16+ (LTS recommended)
+- **Node.js** 18+ (LTS recommended)
 - **NestJS** 8+
 - **TypeORM** 0.3+
 - **nestjs-cls** 3+ (request-scoped context)
 
-Peer dependencies are installed automatically by npm (v7+), pnpm, and bun. With **Yarn v1**, install them yourself if you see peer dependency warnings.
+Peer dependencies are installed automatically by npm (v7+), pnpm, and bun. With **Yarn v1**, install peer dependencies yourself if you see warnings.
 
 ---
 
@@ -64,7 +64,7 @@ bun add nestjs-typeorm-history-log
 
 ## Quick Start (3 steps)
 
-**Just want to get going?** Do this:
+Get running in three steps:
 
 1. **Register the module** in `AppModule`:
 
@@ -100,7 +100,7 @@ import { HistoryContext } from 'nestjs-typeorm-history-log';
 update(@Param('id') id: string) { /* ... */ }
 ```
 
-You need a user on the request (e.g. `request.user.id` from Passport). Otherwise we throw. To customize where we read the user from, use `userRequestKey`, `userIdField`, and optionally `userEntity` in `forRoot()` — see [User identity](#user-identity).
+The library requires a user on the request (e.g. `request.user.id` from Passport); otherwise it throws. To customize where the user is read from, set `userRequestKey`, `userIdField`, and optionally `userEntity` in `forRoot()` — see [User identity](#user-identity).
 
 ---
 
@@ -108,21 +108,21 @@ You need a user on the request (e.g. `request.user.id` from Passport). Otherwise
 
 ### 1. TypeORM subscribers miss a lot
 
-Out of the box, TypeORM subscribers see `repository.save()` and `repository.remove()`, but they don't see `manager.update()`, `manager.delete()`, `manager.insert()`, or `manager.upsert()`—the same methods you use with QueryBuilder or bulk updates. When they do run, you often get only the new state, not the old one, so you can't tell what actually changed.
+By default, TypeORM subscribers see `repository.save()` and `repository.remove()`, but not `manager.update()`, `manager.delete()`, `manager.insert()`, or `manager.upsert()`—the same methods used with QueryBuilder or bulk updates. When they do run, you often get only the new state, not the old one, so you can't tell what actually changed.
 
-This library patches those methods. Before each call it stores the current request context and the operation's criteria (e.g. `{ id: 5 }`) on the database connection. When the subscriber runs, it uses that to load the old row(s) from the DB and build a proper before/after snapshot. So you get correct history even for QueryBuilder and bulk writes.
+This library patches those methods. Before each call it stores the current request context and the operation's criteria (e.g. `{ id: 5 }`) on the database connection. When the subscriber runs, it loads the old row(s) from the DB and builds a proper before/after snapshot. You get correct history even for QueryBuilder and bulk writes.
 
 ### 2. Events often give you half the picture
 
-With `.save()` and `.remove()`, event payloads can be partial (only the columns you passed) or out of sync inside a transaction. We don't trust the event alone: we re-query by criteria to get the full row, then merge. That way the log always has a consistent before/after view.
+With `.save()` and `.remove()`, event payloads can be partial (only the columns you passed) or out of sync inside a transaction. The library doesn't rely on the event alone: it re-queries by criteria to get the full row, then merges. The log always has a consistent before/after view.
 
 ### 3. Request context can get mixed up
 
-Lots of audit setups store "current user" in AsyncLocalStorage (e.g. nestjs-cls). When many requests run at once, one request can overwrite that store before the subscriber runs, so a change gets attributed to the wrong user. We copy the context onto the connection when the operation starts and read it from there when we write the log. So the right user is tied to the right write even under load.
+Many audit setups store the current user in AsyncLocalStorage (e.g. nestjs-cls). When many requests run at once, one request can overwrite that store before the subscriber runs, so a change gets attributed to the wrong user. The library copies the context onto the connection when the operation starts and reads it from there when writing the log, so the correct user stays tied to the correct write under load.
 
 ---
 
-**Use this library when:** you need a real audit trail (who, what, when, and what it was before), you use QueryBuilder or bulk ops, or you care about compliance/support. **Skip it when:** you only use `repository.save()` and are okay with partial or missing history, or you're building something throwaway.
+**Use this library when** you need a real audit trail (who, what, when, and what it was before), you use QueryBuilder or bulk ops, or you care about compliance and support. **Skip it when** you only use `repository.save()` and are okay with partial or missing history, or you're building something throwaway.
 
 ---
 
@@ -157,7 +157,7 @@ Use a **stable, unique** `entityKey` per entity (e.g. `'project-entity'`). It is
 
 ### User identity
 
-We need a user id for every log. By default we read `request.user.id` (Passport-style). If we can’t find one we throw.
+The library requires a user id for every log. By default it reads `request.user.id` (Passport-style). If it can’t find one, it throws.
 
 To use a different request key or id field (e.g. `req.principal.uuid`), set `userRequestKey` and `userIdField` in `forRoot`:
 
@@ -185,7 +185,7 @@ export class HistoryController {
     return this.history.findAll({
       userId,
       entityKey: 'project',
-      fromDate: new Date('2024-01-01'),
+      fromDate: new Date('2020-01-01'), // example: filter from a given date
       page: 1, 
       limit: 10,
     });
@@ -378,10 +378,10 @@ Decorators are read from the entity’s prototype. Keys that aren’t in the pay
 
 ## How It Fits Together
 
-When we write a history row we need “who” (user_id) and “in what scope” (context entity). We get that from three places, and the **last one wins** if several are set:
+Each history row needs “who” (user_id) and “in what scope” (context entity). The library gets that from three places; the **last one wins** if several are set:
 
 1. **Request context** — Set by the interceptor from the HTTP request (user, parent entity id). Shared for the whole request.
-2. **Copy on the DB connection** — When you call `manager.update()` (or similar), we immediately copy that request context onto the connection. So even if another request runs before we write the log, we still have the right user and scope for *this* operation. We clear it after the call.
+2. **Copy on the DB connection** — When you call `manager.update()` (or similar), the library immediately copies that request context onto the connection. So even if another request runs before the log is written, the right user and scope for *this* operation are preserved. The library clears it after the call.
 3. **What you pass into `saveLog`** — If you call `saveLog` yourself (e.g. from a worker or after raw SQL), you pass `context: { user_id, ... }`. That overrides anything from (1) or (2).
 
 So: normal HTTP flow uses (1) and (2). Manual or background use (3). The copy on the connection is what keeps logs correct when many requests run at once.
@@ -433,12 +433,12 @@ graph TD
 The library skips writing a history log in these cases:
 
 - Entity doesn’t have `@EntityHistoryTracker`.
-- No `user_id` in context (we throw instead of saving).
+- No `user_id` in context (the library throws instead of saving).
 - UPDATE but the diff is empty after filtering.
 - Code runs inside `historyHelper.ignore()`.
-- We can’t get sealed context or criteria (subscriber logs a warning and skips).
-- We can’t get a primary key from the data (helper logs and skips).
-- `patchGlobal: false` — we don’t patch, so only `.save()`/`.remove()` are seen and we may not have criteria for old rows.
+- Sealed context or criteria can’t be resolved (subscriber logs a warning and skips).
+- A primary key can’t be derived from the data (helper logs and skips).
+- `patchGlobal: false` — the library doesn’t patch EntityManager, so only `.save()`/`.remove()` are seen and criteria for old rows may be missing.
 
 ---
 
