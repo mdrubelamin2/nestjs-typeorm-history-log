@@ -92,7 +92,11 @@ export class HistoryHelper<T = HistoryLog> {
       return;
     }
 
-    const historyLogRepo = params.manager.getRepository(this.options.historyLogEntity);
+    const historyLogEntity = this.options.historyLogEntity;
+    if (!historyLogEntity) {
+      throw new Error('[HistoryModule] historyLogEntity is required in options.');
+    }
+    const historyLogRepo = params.manager.getRepository(historyLogEntity);
 
     const capturedData: HistoryCapturedData = {
       ...metadata,
@@ -112,7 +116,7 @@ export class HistoryHelper<T = HistoryLog> {
       log = historyLogRepo.create(capturedData as any);
     }
 
-    await params.manager.save(this.options.historyLogEntity, log as any);
+    await params.manager.save(historyLogEntity, log as any);
   }
 
   /**
@@ -120,7 +124,11 @@ export class HistoryHelper<T = HistoryLog> {
    * Supports both native TypeORM options and semantic audit filters (fromDate, Action, etc.)
    */
   async findAll(options: HistoryFindAllOptions<T> = {}): Promise<HistoryFindAllResult<T>> {
-    const repository = this.dataSource.getRepository(this.options.historyLogEntity);
+    const historyLogEntityForRepo = this.options.historyLogEntity;
+    if (!historyLogEntityForRepo) {
+      throw new Error('[HistoryModule] historyLogEntity is required in options.');
+    }
+    const repository = this.dataSource.getRepository(historyLogEntityForRepo);
     const {
       fromDate, toDate,
       entityKey, entityId,
@@ -182,7 +190,7 @@ export class HistoryHelper<T = HistoryLog> {
 
     const pageNum = page !== undefined ? page : Math.floor(skip / take) + 1;
     return {
-      items,
+      items: items as T[],
       meta: {
         total,
         page: pageNum,
