@@ -41,24 +41,21 @@ Peer dependencies are installed automatically by npm (v7+), pnpm, and bun. With 
 
 ## Installation
 
+Use your preferred package manager:
+
 ```bash
+# npm
 npm install nestjs-typeorm-history-log
-```
-
-<details>
-<summary>Other package managers</summary>
-
-```bash
-# yarn
-yarn add nestjs-typeorm-history-log
 
 # pnpm
 pnpm add nestjs-typeorm-history-log
 
-# bun
+# yarn
+yarn add nestjs-typeorm-history-log
+
+# Bun
 bun add nestjs-typeorm-history-log
 ```
-</details>
 
 ---
 
