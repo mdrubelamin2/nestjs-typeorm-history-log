@@ -32,6 +32,9 @@
   },
   "homepage": "https://github.com/mdrubelamin2/nestjs-typeorm-history-log#readme",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "files": [
     "dist",
     "README.md"
