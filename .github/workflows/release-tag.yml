@@ -48,7 +48,7 @@ jobs:
         if: steps.push-tag.outputs.tag_created == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
@@ -74,6 +74,4 @@ jobs:
 
       - name: Publish to npm
         if: steps.push-tag.outputs.tag_created == 'true'
-        run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
