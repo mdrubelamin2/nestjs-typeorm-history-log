@@ -11,3 +11,6 @@ bun.lockb
 *.tsbuildinfo
 .git
 .gitignore
+*.spec.ts
+.env
+.env.*
