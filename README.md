@@ -100,7 +100,7 @@ import { HistoryContext } from 'nestjs-typeorm-history-log';
 update(@Param('id') id: string) { /* ... */ }
 ```
 
-The library requires a user on the request (e.g. `request.user.id` from Passport); otherwise it throws. To customize where the user is read from, set `userRequestKey`, `userIdField`, and optionally `userEntity` in `forRoot()` — see [User identity](#user-identity).
+The library requires a **user id for every history row**; if none is found, it throws. On HTTP routes use `@HistoryContext` (and ensure `request.user` or your auth sets the user). For **background jobs, cron, or non-HTTP code paths** that perform tracked changes, either set context (e.g. pass `context: { user_id, ... }` when calling `saveLog` manually) or run the code inside `HistoryHelper.ignore(callback)` so no log is written and no error is thrown. To customize where the user is read from on the request, set `userRequestKey`, `userIdField`, and optionally `userEntity` in `forRoot()` — see [User identity](#user-identity).
 
 ---
 
