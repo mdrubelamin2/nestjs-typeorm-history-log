@@ -1,6 +1,6 @@
 {
   "name": "nestjs-typeorm-history-log",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A robust, automated audit trail for NestJS and TypeORM using the Sandwich Pattern.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
