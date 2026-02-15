@@ -1,0 +1,13 @@
+src
+node_modules
+.gemini
+.planning
+brain
+tsconfig.json
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+*.tsbuildinfo
+.git
+.gitignore
