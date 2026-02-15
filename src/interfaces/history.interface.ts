@@ -18,8 +18,10 @@ export interface HistoryLogLike {
   created_at?: Date;
 }
 
+/** Extra columns (beyond BaseHistoryLog) you can set on a history row (e.g. ip, user_agent). */
 export type HistoryMetadata<T> = Partial<Omit<T, keyof BaseHistoryLog | 'id' | 'created_at'>>;
 
+/** Internal shape passed to entityMapper; contains action, entityKey, entityId, context, user_id, content. */
 export interface HistoryCapturedData {
   action: HistoryActionType;
   entityKey: string;
@@ -31,8 +33,10 @@ export interface HistoryCapturedData {
   [key: string]: any;
 }
 
+/** Tier 3: maps {@link HistoryCapturedData} to your custom history entity. */
 export type HistoryMapper<T> = (data: HistoryCapturedData) => Partial<T>;
 
+/** Base options for {@link HistoryModule.forRoot}: user resolution, ignored keys, entity, metadataProvider. */
 export interface HistoryModuleBaseOptions<T> {
   userEntity?: any;
   userRequestKey?: string;
@@ -43,6 +47,7 @@ export interface HistoryModuleBaseOptions<T> {
   metadataProvider?: (req: any) => HistoryMetadata<T>;
 }
 
+/** Full options for {@link HistoryModule.forRoot}; includes patchGlobal and optional entityMapper for Tier 3. */
 export type HistoryModuleOptions<T = any, P extends boolean = true> = HistoryModuleBaseOptions<T> & {
   patchGlobal?: P;
 } & (
@@ -51,6 +56,7 @@ export type HistoryModuleOptions<T = any, P extends boolean = true> = HistoryMod
     : { entityMapper?: HistoryMapper<T> }
   );
 
+/** Resolved context for a history row: parent key/id, user_id, and optional metadata. */
 export interface HistoryContextData<T = HistoryLog> {
   contextEntityKey: string;
   contextEntityId: string | number | null;
@@ -61,16 +67,19 @@ export interface HistoryContextData<T = HistoryLog> {
   metadata?: HistoryMetadata<T>;
 }
 
+/** Options for {@link HistoryContext}: where to read parent entity key/id from the request (params, body, query). */
 export interface HistoryContextOptions {
   entityKey?: string;
   idKey?: string;
   location?: 'params' | 'body' | 'query';
 }
 
+/** Options for {@link EntityHistoryTracker}: required entityKey identifying this entity in history. */
 export interface HistoryTrackerOptions {
   entityKey: string;
 }
 
+/** Content stored in history: for UPDATE a diff (path → { old, new }), for CREATE/DELETE the full filtered row. */
 export interface HistoryContent {
   old?: any;
   new?: any;

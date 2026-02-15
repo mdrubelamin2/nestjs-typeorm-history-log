@@ -17,6 +17,13 @@ import {
 import { generateDiff } from '../utils/diff.util';
 import { filterHistoryPayload } from '../utils/filter-payload.util';
 
+/**
+ * Injected service for writing and querying history logs.
+ * Used by the subscriber internally; you inject it for {@link HistoryHelper.saveLog | saveLog} (e.g. from workers),
+ * {@link HistoryHelper.findAll | findAll}, {@link HistoryHelper.addMetadata | addMetadata}, and {@link HistoryHelper.ignore | ignore}.
+ *
+ * @template T - The history log entity type (defaults to {@link HistoryLog}).
+ */
 @Injectable()
 export class HistoryHelper<T = HistoryLog> {
   private readonly logger = new Logger(HistoryHelper.name);
@@ -28,6 +35,17 @@ export class HistoryHelper<T = HistoryLog> {
     private readonly options: HistoryModuleOptions<T>,
   ) { }
 
+  /**
+   * Writes one history row for a single entity change (CREATE, UPDATE, or DELETE).
+   * Resolves user and context from CLS, sealed context, or the passed-in context.
+   *
+   * @param params - Log parameters.
+   * @param params.logData - Entity key, action, old state, payload, and entity target.
+   * @param params.manager - TypeORM EntityManager (same transaction as the write).
+   * @param params.context - Optional override for user_id and context (e.g. when calling from a worker).
+   * @param params.metadata - Optional extra fields to merge into the history row.
+   * @throws Error if no user_id can be resolved (history requires a user for every row).
+   */
   async saveLog(params: {
     logData: {
       entityKey: string;
@@ -120,8 +138,10 @@ export class HistoryHelper<T = HistoryLog> {
   }
 
   /**
-   * Universal method to query history logs with advanced filtering and pagination.
-   * Supports both native TypeORM options and semantic audit filters (fromDate, Action, etc.)
+   * Queries history logs with filtering (date range, entityKey, entityId, user_id, action) and pagination.
+   *
+   * @param options - Filter and pagination options. See {@link HistoryFindAllOptions}.
+   * @returns Paginated result with items and meta (total, page, limit, totalPages). See {@link HistoryFindAllResult}.
    */
   async findAll(options: HistoryFindAllOptions<T> = {}): Promise<HistoryFindAllResult<T>> {
     const historyLogEntityForRepo = this.options.historyLogEntity;
@@ -205,6 +225,13 @@ export class HistoryHelper<T = HistoryLog> {
     return String(id);
   }
 
+  /**
+   * Adds or merges metadata into the current request's history context (CLS).
+   * The merged metadata is included on history rows written for this request.
+   * No-op if CLS is not active.
+   *
+   * @param data - Key-value pairs to merge into context metadata (e.g. ip, user_agent).
+   */
   addMetadata(data: HistoryMetadata<T>) {
     if (!this.cls.isActive()) return;
     const context = this.cls.get<HistoryContextData<T>>('historyContext') || ({} as any);
@@ -212,6 +239,13 @@ export class HistoryHelper<T = HistoryLog> {
     this.cls.set('historyContext', context);
   }
 
+  /**
+   * Runs the callback without writing any history rows (e.g. for seed scripts or internal updates).
+   * All tracked entity changes inside the callback are skipped.
+   *
+   * @param callback - Async function to run; its entity changes are not logged.
+   * @returns The result of the callback.
+   */
   async ignore<R>(callback: () => Promise<R>): Promise<R> {
     return this.cls.runWith({ [HISTORY_IGNORE_KEY]: true } as Record<string, boolean>, callback);
   }

@@ -10,9 +10,23 @@ import { HistorySubscriber } from './services/history.subscriber';
 import { HistoryContextInterceptor } from './services/history-context.interceptor';
 import { HistoryLog } from './entities/history-log.entity';
 
+/**
+ * NestJS module for automatic history logging of TypeORM entity changes.
+ * Register with `HistoryModule.forRoot()` in your app; use {@link EntityHistoryTracker} on entities
+ * and {@link HistoryContext} on routes to capture who changed what and when.
+ *
+ * @see {@link HistoryModuleOptions} for configuration options.
+ */
 @Global()
 @Module({})
 export class HistoryModule {
+  /**
+   * Registers the history module with optional configuration.
+   * Use the default entity and table, or pass a custom entity/mapper for Tier 2 or Tier 3.
+   *
+   * @param options - Module options (entity, user resolution, ignored keys, etc.). See {@link HistoryModuleOptions}.
+   * @returns NestJS DynamicModule for use in `imports: [HistoryModule.forRoot()]`.
+   */
   static forRoot<T = HistoryLog, P extends boolean = true>(
     options: HistoryModuleOptions<T, P> = {} as any,
   ): DynamicModule {
