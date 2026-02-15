@@ -204,6 +204,8 @@ export class HistoryController {
 
 ---
 
+<a id="advanced-configuration-the-3-tiers"></a>
+
 ## 🛠 Advanced Configuration (The 3 Tiers)
 
 **When you're ready to make it yours.** The library offers three levels: zero-config (what you have now), adding your own columns (e.g. IP, user-agent), or mapping to a fully custom table. Pick the tier that matches where you are—no rush, and you can move up when you need to.
@@ -311,6 +313,8 @@ A function `(req) => ({ ... })` that runs on every request. Whatever you return 
 - **Tier 3** — Return any keys; in `entityMapper` you read them from `data` (e.g. `data.trace_id`) and map to your table.
 
 ---
+
+<a id="advanced-features"></a>
 
 ## 🛠 Advanced Features
 
@@ -473,6 +477,8 @@ graph TD
 
 ---
 
+<a id="testing-edge-cases"></a>
+
 ## Testing & Edge Cases
 
 **Testing and edge cases.** Tips so your tests and production behavior stay predictable.
@@ -485,6 +491,8 @@ graph TD
 - **Bulk** — `manager.update(Entity, criteria, partial)` can match many rows; we write one history row per row. Bulk insert: one CREATE per row (TypeORM's `afterInsert` behavior).
 
 ---
+
+<a id="api-reference"></a>
 
 ## 📖 API Reference
 
@@ -546,6 +554,8 @@ graph TD
 The subscriber, patcher, and criteria carrier are internal (not exported).
 
 ---
+
+<a id="contributing-license"></a>
 
 ## Contributing & License
 
