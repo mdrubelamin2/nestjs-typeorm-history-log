@@ -7,10 +7,11 @@ on:
       - master
 
 jobs:
-  create-tag:
+  create-tag-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,9 +35,45 @@ jobs:
           fi
 
       - name: Create and push tag
+        id: push-tag
         if: steps.tag-check.outputs.exists != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
+          echo "tag_created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.push-tag.outputs.tag_created == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        if: steps.push-tag.outputs.tag_created == 'true'
+        run: npm install
+
+      - name: Build
+        if: steps.push-tag.outputs.tag_created == 'true'
+        run: npm run build
+
+      - name: Test
+        if: steps.push-tag.outputs.tag_created == 'true'
+        run: npm test
+
+      - name: Create GitHub Release
+        if: steps.push-tag.outputs.tag_created == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npm
+        if: steps.push-tag.outputs.tag_created == 'true'
+        run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
