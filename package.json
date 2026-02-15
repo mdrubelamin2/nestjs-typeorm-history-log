@@ -6,17 +6,42 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "prepare": "npm run build",
+    "prepare": "husky",
     "test": "jest",
     "test:watch": "jest --watch"
   },
-  "keywords": ["nestjs", "typeorm", "history", "audit", "logging", "sandwich-pattern"],
-  "author": {"name": "Md Rubel Amin", "email": "mramincse@gmail.com", "url": "https://github.com/mdrubelamin2"},
-  "repository": {"type": "git", "url": "git+https://github.com/mdrubelamin2/nestjs-typeorm-history-log.git"},
-  "bugs": {"url": "https://github.com/mdrubelamin2/nestjs-typeorm-history-log/issues"},
+  "keywords": [
+    "nestjs",
+    "typeorm",
+    "history",
+    "audit",
+    "logging",
+    "sandwich-pattern"
+  ],
+  "author": {
+    "name": "Md Rubel Amin",
+    "email": "mramincse@gmail.com",
+    "url": "https://github.com/mdrubelamin2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mdrubelamin2/nestjs-typeorm-history-log.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mdrubelamin2/nestjs-typeorm-history-log/issues"
+  },
   "homepage": "https://github.com/mdrubelamin2/nestjs-typeorm-history-log#readme",
   "license": "MIT",
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "peerDependencies": {
     "@nestjs/common": ">=8.0.0",
     "@nestjs/core": ">=8.0.0",
@@ -34,6 +59,7 @@
     "@nestjs/testing": "^10.0.0",
     "@nestjs/typeorm": "^10.0.0",
     "@types/jest": "^29.5.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "nestjs-cls": "^4.0.0",
     "ts-jest": "^29.1.0",
