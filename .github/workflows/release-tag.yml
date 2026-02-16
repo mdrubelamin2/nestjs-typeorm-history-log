@@ -48,7 +48,8 @@ jobs:
         if: steps.push-tag.outputs.tag_created == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         if: steps.push-tag.outputs.tag_created == 'true'
@@ -70,6 +71,10 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure npm 11+ for Trusted Publishing
+        if: steps.push-tag.outputs.tag_created == 'true'
+        run: npm install -g npm@latest
 
       - name: Publish to npm
         if: steps.push-tag.outputs.tag_created == 'true'
