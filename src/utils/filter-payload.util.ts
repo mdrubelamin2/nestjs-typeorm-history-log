@@ -6,9 +6,9 @@ import {
 
 export function filterHistoryPayload(
   entityTarget: object,
-  payload: Record<string, any>,
+  payload: Record<string, unknown>,
   ignoredKeys: Set<string> = new Set()
-): Record<string, any> {
+): Record<string, unknown> {
   if (!payload || (Object.keys(payload).length === 0)) return payload;
 
   const filtered: Record<string, unknown> = {};

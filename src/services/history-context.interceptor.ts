@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { BaseHistoryLog } from '../entities/base-history-log.entity';
 import { Observable } from 'rxjs';
-import { HISTORY_CONTEXT_KEY, HISTORY_OPTIONS } from '../history.constants';
+import { HISTORY_CLS_CONTEXT_KEY, HISTORY_CONTEXT_KEY, HISTORY_OPTIONS } from '../history.constants';
 import {
   HistoryContextData,
   HistoryContextOptions,
@@ -25,7 +25,7 @@ export class HistoryContextInterceptor<T extends BaseHistoryLog = BaseHistoryLog
     private readonly options: HistoryModuleOptions<T>,
   ) { }
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const options = this.reflector.get<HistoryContextOptions>(
       HISTORY_CONTEXT_KEY,
       context.getHandler(),
@@ -56,9 +56,9 @@ export class HistoryContextInterceptor<T extends BaseHistoryLog = BaseHistoryLog
           metadata,
         };
 
-        this.cls.set('historyContext', historyContext);
+        this.cls.set(HISTORY_CLS_CONTEXT_KEY, historyContext);
         return next.handle();
-      }) as any;
+      });
     }
 
     return next.handle();

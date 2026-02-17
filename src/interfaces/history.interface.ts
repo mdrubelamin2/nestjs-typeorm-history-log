@@ -30,30 +30,30 @@ export interface HistoryCapturedData {
   contextEntityId?: string | number | null;
   user_id: string | number | null;
   content: HistoryContent;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /** Tier 3: maps {@link HistoryCapturedData} to your custom history entity. */
-export type HistoryMapper<T> = (data: HistoryCapturedData) => Partial<T>;
+export type HistoryEntityMapper<T> = (data: HistoryCapturedData) => Partial<T>;
 
 /** Base options for {@link HistoryModule.forRoot}: user resolution, ignored keys, entity, metadataProvider. */
 export interface HistoryModuleBaseOptions<T> {
-  userEntity?: any;
+  userEntity?: object;
   userRequestKey?: string;
   userIdField?: string;
   ignoredKeys?: string[];
   softDeleteField?: string;
   historyLogEntity?: { new(): T };
-  metadataProvider?: (req: any) => HistoryMetadata<T>;
+  metadataProvider?: (req: unknown) => HistoryMetadata<T>;
 }
 
 /** Full options for {@link HistoryModule.forRoot}; includes patchGlobal and optional entityMapper for Tier 3. */
-export type HistoryModuleOptions<T = any, P extends boolean = true> = HistoryModuleBaseOptions<T> & {
+export type HistoryModuleOptions<T = HistoryLog, P extends boolean = true> = HistoryModuleBaseOptions<T> & {
   patchGlobal?: P;
 } & (
     P extends true
-    ? (T extends BaseHistoryLog ? { entityMapper?: HistoryMapper<T> } : { entityMapper: HistoryMapper<T> })
-    : { entityMapper?: HistoryMapper<T> }
+    ? (T extends BaseHistoryLog ? { entityMapper?: HistoryEntityMapper<T> } : { entityMapper: HistoryEntityMapper<T> })
+    : { entityMapper?: HistoryEntityMapper<T> }
   );
 
 /** Resolved context for a history row: parent key/id, user_id, and optional metadata. */
@@ -81,9 +81,15 @@ export interface HistoryTrackerOptions {
 
 /** Content stored in history: for UPDATE a diff (path → { old, new }), for CREATE/DELETE the full filtered row. */
 export interface HistoryContent {
-  old?: any;
-  new?: any;
-  [key: string]: any;
+  old?: unknown;
+  new?: unknown;
+  [key: string]: unknown;
+}
+
+/** Side-by-side view of a single change, used by HistoryMapper and Unified Audit View. */
+export interface UnifiedHistoryContent<T = unknown> {
+  old: Partial<T> | null;
+  new: Partial<T> | null;
 }
 
 export interface HistoryFindAllOptions<T = HistoryLog>
@@ -132,18 +138,24 @@ export interface HistoryFindAllOptions<T = HistoryLog>
    * Standard TypeORM where conditions.
    */
   where?: FindOptionsWhere<T> | FindOptionsWhere<T>[];
+  /**
+   * Whether to unflatten dot-notated keys and return a unified {old, new} structure.
+   * Default is true.
+   */
+  unflatten?: boolean;
 }
 
 /**
  * Result shape returned by HistoryHelper.findAll().
  *
- * T is the history log entity type: the default HistoryLog (table `history_logs`), or your
- * custom entity when you pass historyLogEntity (and optionally entityMapper) in
- * HistoryModule.forRoot(). So when using a custom log table, T is your entity and
- * items are instances of that entity.
+ * T is the history log entity type.
+ *
+ * WARNING: If `unflatten` is true (default), the `content` property of each item
+ * is transformed into a {@link UnifiedHistoryContent} object ({ old, new }),
+ * which may differ from the raw `HistoryContent` type defined on your entity `T`.
  */
 export interface HistoryFindAllResult<T = HistoryLog> {
-  /** Rows from your history log table (default or custom entity). */
+  /** Rows from your history log table. Content is unified by default. */
   items: T[];
   meta: {
     total: number;

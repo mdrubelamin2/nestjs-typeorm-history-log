@@ -4,7 +4,7 @@ import { Between, DataSource, EntityManager, EntityTarget, LessThanOrEqual, More
 import { BaseHistoryLog } from '../entities/base-history-log.entity';
 import { HistoryLog } from '../entities/history-log.entity';
 import { HistoryActionType } from '../enums/history.enum';
-import { HISTORY_IGNORE_KEY, HISTORY_OPTIONS } from '../history.constants';
+import { HISTORY_CLS_CONTEXT_KEY, HISTORY_IGNORE_KEY, HISTORY_OPTIONS, HISTORY_QUERY_RUNNER_CONTEXTS_KEY } from '../history.constants';
 import {
   HistoryContent,
   HistoryContextData,
@@ -13,9 +13,11 @@ import {
   HistoryMetadata,
   HistoryModuleOptions,
   HistoryCapturedData,
+  HistoryLogLike,
 } from '../interfaces/history.interface';
 import { generateDiff } from '../utils/diff.util';
 import { filterHistoryPayload } from '../utils/filter-payload.util';
+import { HistoryMapperService } from './history-mapper.service';
 
 /**
  * Injected service for writing and querying history logs.
@@ -31,6 +33,7 @@ export class HistoryHelper<T = HistoryLog> {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cls: ClsService,
+    private readonly historyMapperService: HistoryMapperService,
     @Inject(HISTORY_OPTIONS)
     private readonly options: HistoryModuleOptions<T>,
   ) { }
@@ -52,11 +55,11 @@ export class HistoryHelper<T = HistoryLog> {
       action: HistoryActionType;
       oldState: ObjectLiteral;
       payload: ObjectLiteral;
-      entityTarget: EntityTarget<any>;
+      entityTarget: EntityTarget<ObjectLiteral>;
     };
     manager: EntityManager;
     context?: Partial<HistoryContextData<T>>;
-    metadata?: any;
+    metadata?: HistoryMetadata<T>;
   }) {
     const { logData, manager } = params;
     const { action, entityKey, oldState, payload, entityTarget } = logData;
@@ -74,7 +77,7 @@ export class HistoryHelper<T = HistoryLog> {
     }
 
     const data: ObjectLiteral = { ...oldState, ...payload };
-    const entityId = this.toNormalizedId(this.dataSource.getRepository(entityTarget).getId(data));
+    const entityId = this.toNormalizedId(this.dataSource.getRepository(entityTarget).getId(data) as unknown);
 
     if (!entityId) {
       this.logger.error(
@@ -127,14 +130,11 @@ export class HistoryHelper<T = HistoryLog> {
       content,
     };
 
-    let log: any;
-    if (this.options.entityMapper) {
-      log = historyLogRepo.create(this.options.entityMapper(capturedData) as any);
-    } else {
-      log = historyLogRepo.create(capturedData as any);
-    }
-
-    await params.manager.save(historyLogEntity, log as any);
+    // Generic history entity; create/save accept partial and return entity shape.
+    const log = this.options.entityMapper
+      ? historyLogRepo.create(this.options.entityMapper(capturedData) as Parameters<typeof historyLogRepo.create>[0])
+      : historyLogRepo.create(capturedData as Parameters<typeof historyLogRepo.create>[0]);
+    await params.manager.save(historyLogEntity, log);
   }
 
   /**
@@ -200,17 +200,28 @@ export class HistoryHelper<T = HistoryLog> {
           ? standardOptions.skip
           : 0;
 
+    // findAndCount: order/options generic differs from T; single cast for compatibility.
     const [items, total] = await repository.findAndCount({
       ...standardOptions,
       where,
       take,
       skip,
-      order: (standardOptions.order || { created_at: 'DESC' }) as any,
+      order: standardOptions.order ?? { created_at: 'DESC' },
     } as any);
 
     const pageNum = page !== undefined ? page : Math.floor(skip / take) + 1;
+
+    // 4. Content mapping
+    const shouldUnflatten = options.unflatten !== false;
+    const finalItems = shouldUnflatten
+      ? (items as T[]).map((item) => ({
+        ...item,
+        content: this.historyMapperService.mapToUnified(item as HistoryLogLike)
+      }))
+      : items;
+
     return {
-      items: items as T[],
+      items: finalItems as T[],
       meta: {
         total,
         page: pageNum,
@@ -220,7 +231,7 @@ export class HistoryHelper<T = HistoryLog> {
     };
   }
 
-  private toNormalizedId(id: any): string | number {
+  private toNormalizedId(id: unknown): string | number {
     if (typeof id === 'number' || typeof id === 'string') return id;
     return String(id);
   }
@@ -234,9 +245,9 @@ export class HistoryHelper<T = HistoryLog> {
    */
   addMetadata(data: HistoryMetadata<T>) {
     if (!this.cls.isActive()) return;
-    const context = this.cls.get<HistoryContextData<T>>('historyContext') || ({} as any);
+    const context = this.cls.get<HistoryContextData<T>>(HISTORY_CLS_CONTEXT_KEY) ?? ({} as Partial<HistoryContextData<T>>);
     context.metadata = { ...(context.metadata || {}), ...data };
-    this.cls.set('historyContext', context);
+    this.cls.set(HISTORY_CLS_CONTEXT_KEY, context);
   }
 
   /**
@@ -250,7 +261,7 @@ export class HistoryHelper<T = HistoryLog> {
     return this.cls.runWith({ [HISTORY_IGNORE_KEY]: true } as Record<string, boolean>, callback);
   }
 
-  private getEntityName(target: any): string {
+  private getEntityName(target: EntityTarget<unknown>): string {
     if (typeof target === 'function') return (target as { name: string }).name;
     if (typeof target === 'string') return target;
     if (typeof target === 'object' && target && 'name' in target) {
@@ -265,11 +276,12 @@ export class HistoryHelper<T = HistoryLog> {
     entityName: string,
     manualContext?: Partial<HistoryContextData<T>>,
   ): Partial<HistoryContextData<T>> {
-    const clsContext = this.cls.isActive() ? this.cls.get<any>('historyContext') : null;
+    const clsContext = this.cls.isActive() ? this.cls.get<HistoryContextData<T>>(HISTORY_CLS_CONTEXT_KEY) : null;
 
-    const qrData = manager.queryRunner?.data as Record<string, any>;
-    const sealedContext = qrData?.historyContexts instanceof Map
-      ? qrData.historyContexts.get(entityName)
+    const qrData = manager.queryRunner?.data as Record<string, unknown>;
+    const contextsMap = qrData?.[HISTORY_QUERY_RUNNER_CONTEXTS_KEY];
+    const sealedContext = contextsMap instanceof Map
+      ? contextsMap.get(entityName)
       : null;
 
     // Merge priority: Manual > Sealed (Transactional Snapshot) > Request (CLS)
