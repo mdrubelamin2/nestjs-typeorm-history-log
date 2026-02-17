@@ -9,6 +9,7 @@ import { HistoryHelper } from './services/history.helper';
 import { HistorySubscriber } from './services/history.subscriber';
 import { HistoryContextInterceptor } from './services/history-context.interceptor';
 import { HistoryLog } from './entities/history-log.entity';
+import { HistoryMapperService } from './services/history-mapper.service';
 
 /**
  * NestJS module for automatic history logging of TypeORM entity changes.
@@ -28,7 +29,7 @@ export class HistoryModule {
    * @returns NestJS DynamicModule for use in `imports: [HistoryModule.forRoot()]`.
    */
   static forRoot<T = HistoryLog, P extends boolean = true>(
-    options: HistoryModuleOptions<T, P> = {} as any,
+    options: HistoryModuleOptions<T, P> = {} as HistoryModuleOptions<T, P>,
   ): DynamicModule {
     const finalOptions = {
       historyLogEntity: HistoryLog,
@@ -40,6 +41,7 @@ export class HistoryModule {
       HistoryHelper,
       HistorySubscriber,
       HistoryContextInterceptor,
+      HistoryMapperService,
       {
         provide: HISTORY_OPTIONS,
         useValue: finalOptions,
@@ -63,7 +65,7 @@ export class HistoryModule {
         }),
       ],
       providers,
-      exports: [HistoryHelper, HistoryContextInterceptor, ClsModule],
+      exports: [HistoryHelper, HistoryContextInterceptor, HistoryMapperService, ClsModule],
     };
   }
 }

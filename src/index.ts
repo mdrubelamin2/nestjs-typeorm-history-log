@@ -7,3 +7,5 @@ export * from './entities/base-history-log.entity';
 export * from './entities/history-log.entity';
 export * from './services/history.helper';
 export * from './services/history-context.interceptor';
+export * from './services/history-mapper.service';
+export * from './utils/history-mapper.util';
