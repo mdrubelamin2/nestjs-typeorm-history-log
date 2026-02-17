@@ -44,6 +44,37 @@ jobs:
           git push origin "${{ steps.version.outputs.tag }}"
           echo "tag_created=true" >> "$GITHUB_OUTPUT"
 
+      - name: Check for previous tag
+        id: check_previous
+        if: steps.push-tag.outputs.tag_created == 'true'
+        run: |
+          TAG_COUNT=$(git tag 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$TAG_COUNT" -ge 2 ]; then
+            echo "has_previous=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_previous=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        if: steps.push-tag.outputs.tag_created == 'true' && steps.check_previous.outputs.has_previous == 'true'
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.version.outputs.tag }}
+          writeToFile: false
+
+      - name: Prepare release body
+        if: steps.push-tag.outputs.tag_created == 'true'
+        run: |
+          if [ -n "$CHANGELOG_BODY" ]; then
+            echo "$CHANGELOG_BODY" > release-body.md
+          else
+            echo "Initial release." > release-body.md
+          fi
+        env:
+          CHANGELOG_BODY: ${{ steps.changelog.outputs.changes }}
+
       - name: Setup Node.js
         if: steps.push-tag.outputs.tag_created == 'true'
         uses: actions/setup-node@v4
@@ -68,7 +99,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
+          body_path: release-body.md
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

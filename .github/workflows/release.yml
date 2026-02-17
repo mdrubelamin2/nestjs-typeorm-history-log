@@ -42,9 +42,39 @@ jobs:
             exit 1
           fi
 
+      - name: Check for previous tag
+        id: check_previous
+        run: |
+          TAG_COUNT=$(git tag 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$TAG_COUNT" -ge 2 ]; then
+            echo "has_previous=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_previous=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        if: steps.check_previous.outputs.has_previous == 'true'
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          writeToFile: false
+
+      - name: Prepare release body
+        run: |
+          if [ -n "$CHANGELOG_BODY" ]; then
+            echo "$CHANGELOG_BODY" > release-body.md
+          else
+            echo "Initial release." > release-body.md
+          fi
+        env:
+          CHANGELOG_BODY: ${{ steps.changelog.outputs.changes }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: release-body.md
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
