@@ -3,6 +3,7 @@ import { ClsService } from 'nestjs-cls';
 import {
   DataSource,
   EntityManager,
+  EntityMetadata,
   EntitySubscriberInterface,
   EntityTarget,
   EventSubscriber,
@@ -58,7 +59,13 @@ export class HistorySubscriber<T = HistoryLog> implements EntitySubscriberInterf
     const sealedContext = this.carrier.resolve(id, event.metadata, event.queryRunner);
     if (!sealedContext) return;
 
-    const newItem = await event.manager.findOne(event.metadata.target, { where: sealedContext.criteria });
+    let newItem = null;
+    if (this.isDataComplete(event.entity, event.metadata)) {
+      newItem = event.entity;
+    } else {
+      newItem = await event.manager.findOne(event.metadata.target, { where: sealedContext.criteria });
+    }
+
     if (!newItem) return;
 
     await this.processLog(newItem, null, HistoryActionType.CREATE, event.metadata.target, event.manager);
@@ -74,7 +81,12 @@ export class HistorySubscriber<T = HistoryLog> implements EntitySubscriberInterf
       return;
     }
 
-    const oldStates = await event.manager.find(event.metadata.target, { where: sealedContext.criteria });
+    let oldStates = [];
+    if (this.isDataComplete(event.databaseEntity, event.metadata)) {
+      oldStates = [event.databaseEntity];
+    } else {
+      oldStates = await event.manager.find(event.metadata.target, { where: sealedContext.criteria });
+    }
 
     for (const oldState of oldStates) {
       const newState: ObjectLiteral = { ...oldState, ...JSON.parse(JSON.stringify(event.entity)) };
@@ -106,7 +118,12 @@ export class HistorySubscriber<T = HistoryLog> implements EntitySubscriberInterf
     const sealedContext = this.carrier.resolve(event.entity || event.databaseEntity || event.entityId, event.metadata, event.queryRunner);
     if (!sealedContext) return;
 
-    const items = await event.manager.find(event.metadata.target, { where: sealedContext.criteria });
+    let items = [];
+    if (this.isDataComplete(event.databaseEntity, event.metadata)) {
+      items = [event.databaseEntity];
+    } else {
+      items = await event.manager.find(event.metadata.target, { where: sealedContext.criteria });
+    }
 
     for (const item of items) {
       this.carrier.bufferLog(event.queryRunner, {
@@ -152,5 +169,23 @@ export class HistorySubscriber<T = HistoryLog> implements EntitySubscriberInterf
   private shouldTrack(target: EntityTarget<unknown>): boolean {
     if (typeof target !== 'function') return false;
     return !!Reflect.getMetadata(HISTORY_ENTITY_TRACKER_KEY, target);
+  }
+
+  private isDataComplete(data: any, metadata: EntityMetadata): boolean {
+    if (!data || typeof data !== 'object') return false;
+
+    // Check Primary Keys
+    const pkProperties = metadata.primaryColumns.map((col) => col.propertyName);
+    for (const pk of pkProperties) {
+      if (data[pk] === undefined || data[pk] === null) return false;
+    }
+
+    // Check Tracked Columns
+    const trackedColumns = metadata.columns.map((col) => col.propertyName);
+    for (const col of trackedColumns) {
+      if (data[col] === undefined) return false;
+    }
+
+    return true;
   }
 }
