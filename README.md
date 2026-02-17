@@ -16,11 +16,13 @@ Jump to any part of the journey below:
 - [Quick Start (3 steps)](#quick-start-3-steps)
 - [Advanced Configuration (The 3 Tiers)](#advanced-configuration-the-3-tiers)
 - [Advanced Features](#advanced-features)
+- [Retrieving & Displaying Data](#retrieving-displaying-data)
 - [Why This Library Exists](#why-this-library-exists)
 - [What Actually Happens](#what-actually-happens)
 - [Core Components](#core-components)
 - [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
+- [Development & Testing](#development--testing)
 - [Contributing & License](#contributing-license)
 
 ---
@@ -210,9 +212,19 @@ A function `(req) => ({ ... })` that runs on every request. Whatever you return 
 
 ### The `content` column (JSON)
 
-- **CREATE** — Full filtered new row (your entity minus excluded keys).
-- **UPDATE** — A diff: each key is a path (e.g. `"name"` or `"settings.theme"`), value is `{ old, new }`. Built with `microdiff`. If nothing changed, no row is written.
-- **DELETE** — Full filtered old row. Soft-deletes (e.g. `is_deleted` set to true) are stored as DELETE with the full old state.
+- **Storage**: Internally, history is stored as a flattened diff for updates and full filtered snapshots for creations/deletions. This keeps the database lean.
+- **API (Unified View)**: When you read data via `findAll` or the `HistoryMapper`, the library automatically transforms this into a **Unified Audit View**.
+
+#### Unified Audit View Structure
+Every log entry is presented as a side-by-side `{ old, new }` object where dot-notation keys are automatically unflattened into nested objects.
+
+| Action | `old` state | `new` state |
+| :--- | :--- | :--- |
+| **CREATE** | `null` | Full initial state |
+| **UPDATE** | State of CHANGED fields before | State of CHANGED fields after |
+| **DELETE** | Full state at time of deletion | `null` |
+
+This structure is predictable and allows your UI to simply iterate the keys of `content.old` and `content.new` to show a side-by-side diff.
 
 ### Default table `history_logs`
 
@@ -301,6 +313,79 @@ Decorators are read from the entity's prototype. Keys that aren't in the payload
 
 ---
 
+<a id="retrieving-displaying-data"></a>
+
+## 📊 Retrieving & Displaying Data
+
+**Building your audit dashboard.** The library doesn't just store data; it makes it easy to consume. By default, `findAll` provides a "Unified View" that's ready for side-by-side diffing in your UI.
+
+### 1. Using `HistoryHelper.findAll()`
+
+The `findAll` method un-flattens your history data automatically.
+
+```typescript
+// Controller or Service
+const { items, meta } = await this.historyHelper.findAll({
+  entityKey: 'project',
+  entityId: 1,
+  limit: 10,
+});
+
+// items[0].content will look like:
+// {
+//   old: { profile: { status: 'active' }, budget: 1000 },
+//   new: { profile: { status: 'paused' }, budget: 1500 }
+// }
+```
+
+**Opt-out of unflattening:** If you need the raw database format (flattened dot-notation keys), set `unflatten: false`.
+
+```typescript
+await this.historyHelper.findAll({ unflatten: false });
+```
+
+### 2. Side-by-Side UI Example
+
+Because the unified view delivers two objects with the same keys (for updates), building a diff table is trivial.
+
+```typescript
+// Frontend pseudocode (e.g., React/Vue)
+{Object.keys(log.content.new).map(key => (
+  <tr key={key}>
+    <td>{key}</td>
+    <td>{JSON.stringify(log.content.old?.[key])}</td>
+    <td>{JSON.stringify(log.content.new?.[key])}</td>
+  </tr>
+))}
+```
+
+### 3. Programmatic Reverts
+
+The `old` side of a history log represents the exact partial state needed to restore the entity to its previous values.
+
+```typescript
+const log = await this.historyHelper.findAll({ entityId: 'log-123' });
+const previousState = log.items[0].content.old;
+
+if (previousState) {
+  await this.projectRepository.update(projectId, previousState);
+}
+```
+
+### 4. Using the `HistoryMapper` Utility
+
+If you perform custom queries (e.g. raw TypeORM `find`) or process logs on the frontend, use the `HistoryMapper` to get the same unified view.
+
+```typescript
+import { HistoryMapper } from 'nestjs-typeorm-history-log';
+
+// In a service or even in a browser (it's a pure JS utility)
+const unified = HistoryMapper.mapToUnified(rawLog);
+console.log(unified.old, unified.new);
+```
+
+---
+
 ## Why This Library Exists
 
 **A quick look under the hood.** Knowing why we built this helps you decide when to use it and when to go further. Three things make reliable history logging tricky with plain TypeORM; we built this library to fix all three.
@@ -338,7 +423,8 @@ Many history-log setups store the current user in AsyncLocalStorage (e.g. nestjs
 - **Patcher** — Before each patched call, if the entity is tracked, it stores the operation criteria and a copy of the current CLS context on the QueryRunner so the right user and scope stay tied to this write even under concurrency. It clears that after the call.
 - **Subscriber** — Listens to insert/update/remove. For tracked entities it gets context from the QueryRunner (or CLS), loads old rows by criteria, and calls `HistoryHelper.saveLog` with old state, new state, and action. Soft-deletes (e.g. `is_deleted` set to true) are logged as DELETE.
 - **HistoryHelper.saveLog** — Resolves context (manual > sealed on connection > CLS), requires `user_id` or throws. Builds content: full payload for CREATE/DELETE, diff for UPDATE (via `microdiff`). Filters out keys in `ignoredKeys` and columns marked `@HistoryColumnExclude`. Skips saving if an UPDATE has no changes. Writes a row to your history table in the same transaction.
-- **findAll** — Query helper that turns `fromDate`, `entityKey`, `userId`, `page`, `limit`, etc. into a TypeORM query and returns `{ data, total }`. Default order is `created_at DESC`.
+- **findAll** — Query helper that turns filters into a TypeORM query. **By default, it transforms logs into the Unified Audit View** (nested `{old, new}`) before returning them. Use `unflatten: false` to skip this.
+- **HistoryMapper** — Utility (and NestJS service) that encapsulates the mapping logic. Use `mapToUnified(log)` for the side-by-side view, or `mapToEntity(log)` to get a flat snapshot of one side.
 - **addMetadata** — Merges an object into the current request's context metadata. The next log written in that request will include it.
 - **ignore** — Runs your callback in a context where history is disabled. No log rows are written for changes inside that callback.
 
@@ -456,7 +542,41 @@ The subscriber, patcher, and criteria carrier are internal (not exported).
 - Code runs inside `historyHelper.ignore()`.
 - Sealed context or criteria can't be resolved (subscriber logs a warning and skips).
 - A primary key can't be derived from the data (helper logs and skips).
+
+These are **defensive paths**: the library skips writing rather than persisting incomplete or ambiguous data when context is missing or the entity id cannot be determined.
+
 - `patchGlobal: false` — The library doesn't patch EntityManager, so only `.save()`/`.remove()` are seen and criteria for old rows may be missing.
+
+---
+
+<a id="development--testing"></a>
+
+## Development & Testing
+
+**Run the test suite with confidence.** The project includes unit tests and an end-to-end (E2E) suite so you can verify behavior locally or in CI.
+
+| Command | What it runs |
+| :--- | :--- |
+| `npm test` | All tests: unit specs (`src/**/*.spec.ts`) and E2E specs (`test/**/*.e2e-spec.ts`). |
+| `npm run test:e2e` | E2E tests only. Use this when you want to focus on integration without running unit tests. |
+| `npm run build` | TypeScript build. Run this before publishing or to confirm the project compiles. |
+
+**What the E2E suite covers.** The E2E tests in `test/app.e2e-spec.ts` boot a minimal NestJS app with TypeORM and an in-memory SQLite database, then exercise the full **Sandwich Pattern** (Interceptor → Service → Patcher → Subscriber → DB). They verify that:
+
+- **Repository** — `save()` and `remove()` produce the expected `history_logs` rows with correct action and content (create, update, delete); including bulk `save([e1, e2, e3])`.
+- **EntityManager** — `insert()`, `update()`, `delete()`, and `upsert()` are patched and produce history rows when request context is set (e.g. via CLS); including bulk `insert(Entity, [row1, row2, ...])` and multi-row `update`/`delete` with `In([ids])`.
+- **Transactions** — Create, update, and delete inside `manager.transaction()` produce history rows after commit (CLS context set inside the transaction callback). Rollback: history written inside a transaction is rolled back with the transaction (no history row after rollback).
+- **Edge cases** — `HistoryHelper.ignore()` (no history row for updates inside the callback), missing `user_id` (strict auditing throw), soft-delete (update that sets `is_deleted` → DELETE action in history), `patchGlobal: false` (manager.update does not produce history; repo.save still does), `@HistoryColumnExclude` and `ignoredKeys` (excluded fields absent from content), `@HistoryColumnInclude` (included in content even when in `ignoredKeys`), and empty UPDATE (no history row when no tracked column changes).
+- **Tier 1 (default HistoryLog)** — Default entity and columns; create/update produce history rows with the standard schema (sqljs-compatible in E2E).
+- **HistoryHelper.findAll** — Paginated query by `entityKey`, `entityId`, and date range (`fromDate`/`toDate`); E2E asserts result shape (items, meta, content on items).
+- **Unified audit view** — findAll returns items with `content.old` and `content.new` for side-by-side diff display; E2E asserts this shape.
+- **metadataProvider / addMetadata** — Custom metadata (e.g. `reason`) is merged into context and persisted on the history row when using a Tier 2-style entity and `entityMapper` that maps metadata columns.
+- **saveLog (non-HTTP)** — Manual context (e.g. workers/cron) via `helper.saveLog` writes a history row with the given context; E2E asserts one row with correct entityKey, action, and user_id.
+- **HTTP path** — Real HTTP requests through a controller with `@HistoryContext` (POST/PATCH) exercise the full Interceptor → CLS → Subscriber path; E2E covers params/body/query and custom `userRequestKey`/`userIdField`.
+
+If you add features or change the subscriber/patcher, run both `npm test` and `npm run test:e2e` to ensure nothing regresses. The E2E suite is designed to run quickly and does not require an external database.
+
+Unit tests in `src/**/*.spec.ts` cover additional scenarios. For production use, run the full test suite (`npm test` and `npm run test:e2e`).
 
 ---
 
