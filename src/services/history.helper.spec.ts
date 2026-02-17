@@ -1,9 +1,10 @@
 import { HistoryHelper } from './history.helper';
-import { DataSource } from 'typeorm';
+import { Between, DataSource, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { ClsService } from 'nestjs-cls';
-import { HISTORY_IGNORE_KEY } from '../history.constants';
+import { HISTORY_CLS_CONTEXT_KEY, HISTORY_IGNORE_KEY } from '../history.constants';
 import { HistoryLog } from '../entities/history-log.entity';
 import { HistoryActionType } from '../enums/history.enum';
+import { HistoryMapperService } from './history-mapper.service';
 
 class DummyEntity {
   id!: number;
@@ -15,6 +16,7 @@ describe('HistoryHelper', () => {
   let mockDataSource: jest.Mocked<DataSource>;
   let mockCls: jest.Mocked<Pick<ClsService, 'isActive' | 'get' | 'set' | 'runWith'>>;
   let mockManager: { getRepository: jest.Mock; save: jest.Mock; queryRunner?: any };
+  let mockHistoryMapperService: jest.Mocked<HistoryMapperService>;
 
   const defaultOptions = {
     historyLogEntity: HistoryLog,
@@ -43,9 +45,15 @@ describe('HistoryHelper', () => {
       runWith: jest.fn((_context: any, callback: () => any) => callback()),
     };
 
+    mockHistoryMapperService = {
+      mapToUnified: jest.fn(),
+      mapToEntity: jest.fn(),
+    } as any;
+
     helper = new HistoryHelper(
       mockDataSource as DataSource,
       mockCls as unknown as ClsService,
+      mockHistoryMapperService as unknown as HistoryMapperService,
       defaultOptions as any
     );
   });
@@ -115,7 +123,7 @@ describe('HistoryHelper', () => {
 
       helper.addMetadata({ reason: 'patch' } as any);
 
-      expect(mockCls.set).toHaveBeenCalledWith('historyContext', {
+      expect(mockCls.set).toHaveBeenCalledWith(HISTORY_CLS_CONTEXT_KEY, {
         metadata: { ip: '1.2.3.4', reason: 'patch' },
       });
     });
@@ -159,6 +167,103 @@ describe('HistoryHelper', () => {
           order: { created_at: 'DESC' },
         })
       );
+    });
+
+    it('delegates to historyMapperService.mapToUnified by default', async () => {
+      const items = [{ action: HistoryActionType.CREATE, content: { name: 'Alice' } }];
+      const mockRepo = {
+        findAndCount: jest.fn().mockResolvedValue([items, 1]),
+      };
+      mockDataSource.getRepository = jest.fn().mockReturnValue(mockRepo);
+
+      const expectedUnified = { old: null, new: { name: 'Alice' } };
+      mockHistoryMapperService.mapToUnified.mockReturnValue(expectedUnified as any);
+
+      const result = await helper.findAll();
+
+      const first = result.items[0];
+      expect(first).toBeDefined();
+      expect(first!.content).toEqual(expectedUnified);
+      expect(mockHistoryMapperService.mapToUnified).toHaveBeenCalledWith(items[0]);
+    });
+
+    it('returns raw content when unflatten is false', async () => {
+      const items = [
+        {
+          action: HistoryActionType.UPDATE,
+          content: { 'name': { old: 'Alice', new: 'Bob' } },
+        },
+      ];
+      const mockRepo = {
+        findAndCount: jest.fn().mockResolvedValue([items, 1]),
+      };
+      mockDataSource.getRepository = jest.fn().mockReturnValue(mockRepo);
+
+      const result = await helper.findAll({ unflatten: false });
+
+      const first = result.items[0];
+      expect(first).toBeDefined();
+      expect(first!.content).toEqual({ 'name': { old: 'Alice', new: 'Bob' } });
+      // Should NOT call the mapper
+      expect(mockHistoryMapperService.mapToUnified).not.toHaveBeenCalled();
+    });
+
+    it('includes entityId in where when passed', async () => {
+      const mockRepo = {
+        findAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      mockDataSource.getRepository = jest.fn().mockReturnValue(mockRepo);
+
+      await helper.findAll({ entityId: 1, page: 1, limit: 10 });
+
+      expect(mockRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ entityId: 1 }),
+        })
+      );
+    });
+
+    it('includes Between(fromDate, toDate) for created_at when both fromDate and toDate passed', async () => {
+      const d1 = new Date('2024-01-01');
+      const d2 = new Date('2024-12-31');
+      const mockRepo = {
+        findAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      mockDataSource.getRepository = jest.fn().mockReturnValue(mockRepo);
+
+      await helper.findAll({ fromDate: d1, toDate: d2, page: 1, limit: 10 });
+
+      const call = mockRepo.findAndCount.mock.calls[0][0];
+      expect(call.where.created_at).toBeDefined();
+      expect(call.where.created_at).toEqual(Between(d1, d2));
+    });
+
+    it('includes MoreThanOrEqual(fromDate) for created_at when only fromDate passed', async () => {
+      const d1 = new Date('2024-01-01');
+      const mockRepo = {
+        findAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      mockDataSource.getRepository = jest.fn().mockReturnValue(mockRepo);
+
+      await helper.findAll({ fromDate: d1, page: 1, limit: 10 });
+
+      const call = mockRepo.findAndCount.mock.calls[0][0];
+      expect(call.where.created_at).toBeDefined();
+      expect(call.where.created_at).toEqual(MoreThanOrEqual(d1));
+    });
+
+    it('includes LessThanOrEqual(toDate) for created_at when only toDate passed', async () => {
+      const d2 = new Date('2024-12-31');
+      const mockRepo = {
+        findAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      mockDataSource.getRepository = jest.fn().mockReturnValue(mockRepo);
+
+      await helper.findAll({ toDate: d2, page: 1, limit: 10 });
+
+      const call = mockRepo.findAndCount.mock.calls[0][0];
+      expect(call.where.created_at).toBeDefined();
+      expect(call.where.created_at).toEqual(LessThanOrEqual(d2));
     });
   });
 });
